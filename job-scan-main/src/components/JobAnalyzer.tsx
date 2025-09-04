@@ -1,344 +1,150 @@
-import React, { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Progress } from '@/components/ui/progress';
-import { useToast } from '@/hooks/use-toast';
-import { Upload, FileText, BarChart3, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { useState } from 'react';
+// CORRECTED IMPORT: Use a relative path to ensure the file is found.
+import { analyzeResume } from '../lib/api';
 
-interface AnalysisResult {
-  match_percentage: number;
-  strengths: string;
-  weaknesses: string;
-}
+// Define a type for the analysis result for better code safety
+type AnalysisResult = {
+  match_score: number;
+  summary: string;
+  missing_keywords: string[];
+};
 
-const JobAnalyzer = () => {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+export default function ResumeAnalyzer() {
+  // State for the selected resume file
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  // State for the job description text
   const [jobDescription, setJobDescription] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  // State to hold the analysis result
   const [result, setResult] = useState<AnalysisResult | null>(null);
-  const [dragOver, setDragOver] = useState(false);
-  const { toast } = useToast();
+  // State to track loading status
+  const [isLoading, setIsLoading] = useState(false);
+  // State to hold any error messages
+  const [error, setError] = useState<string | null>(null);
 
-  const handleFileSelect = (file: File) => {
-    if (file.type !== 'application/pdf') {
-      toast({
-        title: "Invalid file type",
-        description: "Please select a PDF file.",
-        variant: "destructive",
-      });
+  // Handler for file input changes
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files) {
+      setResumeFile(event.target.files[0]);
+    }
+  };
+
+  // Handler for form submission
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!resumeFile) {
+      setError('Please upload a resume file.');
       return;
     }
-    setSelectedFile(file);
-    toast({
-      title: "File uploaded",
-      description: `${file.name} has been selected.`,
-    });
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      handleFileSelect(files[0]);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-  };
-
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      handleFileSelect(files[0]);
-    }
-  };
-
-  const handleAnalyze = async () => {
-    if (!selectedFile || !jobDescription.trim()) {
-      toast({
-        title: "Missing information",
-        description: "Please upload a resume and enter a job description.",
-        variant: "destructive",
-      });
+    if (!jobDescription.trim()) {
+      setError('Please paste the job description.');
       return;
     }
 
+    // Reset state before new submission
+    setError(null);
+    setResult(null);
     setIsLoading(true);
-    
+
     try {
       const formData = new FormData();
-      formData.append('resume', selectedFile);
+      formData.append('resume', resumeFile);
       formData.append('job_description', jobDescription);
 
-      const response = await fetch('http://localhost:8000/analyze', {
-        method: 'POST',
-        body: formData,
-      });
+      // Call the imported function directly
+      const analysisResult = await analyzeResume(formData);
+      setResult(analysisResult);
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data: AnalysisResult = await response.json();
-      setResult(data);
-      
-      toast({
-        title: "Analysis complete",
-        description: `Match score: ${data.match_percentage}%`,
-      });
-    } catch (error) {
-      console.error('Error analyzing resume:', error);
-      toast({
-        title: "Analysis failed",
-        description: "Please check if the backend server is running and try again.",
-        variant: "destructive",
-      });
+    } catch (apiError) {
+      console.error('Failed to analyze resume:', apiError);
+      setError('Failed to analyze resume. The server might be busy or down.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const resetAnalysis = () => {
-    setSelectedFile(null);
-    setJobDescription('');
-    setResult(null);
-  };
-
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="bg-gradient-hero text-primary-foreground">
-        <div className="container mx-auto px-4 py-16 text-center">
-          <h1 className="text-4xl md:text-6xl font-bold mb-6 animate-fade-in">
-            Job Match Analyzer
-          </h1>
-          <p className="text-xl md:text-2xl opacity-90 max-w-2xl mx-auto animate-slide-up">
-            Upload your resume and compare it against any job description to get an instant compatibility score
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center p-4 sm:p-6 lg:p-8">
+      <div className="w-full max-w-2xl mx-auto">
+        <header className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-gray-800">Job Scan AI</h1>
+          <p className="text-md text-gray-600 mt-2">
+            Analyze your resume against a job description to improve your chances.
           </p>
-        </div>
-      </div>
+        </header>
 
-      <div className="container mx-auto px-4 py-12 space-y-8">
-        {!result ? (
-          <div className="grid lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
-            {/* File Upload Section */}
-            <Card className="shadow-medium">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Upload className="h-5 w-5" />
-                  Upload Resume
-                </CardTitle>
-                <CardDescription>
-                  Upload your resume in PDF format
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div
-                  className={`border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 ${
-                    dragOver
-                      ? 'border-primary bg-primary/5 scale-105'
-                      : selectedFile
-                      ? 'border-success bg-success/5'
-                      : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50'
-                  }`}
-                  onDrop={handleDrop}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                >
-                  {selectedFile ? (
-                    <div className="space-y-3 animate-fade-in">
-                      <CheckCircle className="h-12 w-12 text-success mx-auto" />
-                      <div>
-                        <p className="font-medium text-success">{selectedFile.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                        </p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelectedFile(null)}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <FileText className="h-12 w-12 text-muted-foreground mx-auto" />
-                      <div>
-                        <p className="text-lg font-medium">
-                          Drag & drop your PDF here
-                        </p>
-                        <p className="text-muted-foreground">or</p>
-                      </div>
-                      <Button variant="upload" asChild>
-                        <label className="cursor-pointer">
-                          <input
-                            type="file"
-                            accept=".pdf"
-                            onChange={handleFileInputChange}
-                            className="hidden"
-                          />
-                          Choose File
-                        </label>
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Job Description Section */}
-            <Card className="shadow-medium">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  Job Description
-                </CardTitle>
-                <CardDescription>
-                  Paste the job description you want to match against
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <Label htmlFor="job-description">Job Description</Label>
-                  <Textarea
-                    id="job-description"
-                    placeholder="Paste the complete job description here including requirements, responsibilities, and qualifications..."
-                    className="min-h-[200px] resize-none"
-                    value={jobDescription}
-                    onChange={(e) => setJobDescription(e.target.value)}
-                  />
-                  <div className="text-sm text-muted-foreground">
-                    {jobDescription.length} characters
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        ) : null}
-
-        {/* Analysis Button */}
-        {!result && (
-          <div className="text-center animate-fade-in">
-            <Button
-              variant="gradient"
-              size="lg"
-              onClick={handleAnalyze}
-              disabled={isLoading || !selectedFile || !jobDescription.trim()}
-              className="px-12 py-6 text-lg"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Analyzing...
-                </>
-              ) : (
-                <>
-                  <BarChart3 className="h-5 w-5" />
-                  Analyze Match
-                </>
-              )}
-            </Button>
-          </div>
-        )}
-
-        {/* Results Section */}
-        {result && (
-          <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-            {/* Match Score */}
-            <Card className="shadow-large">
-              <CardHeader className="text-center">
-                <CardTitle className="text-2xl">Match Analysis Complete</CardTitle>
-                <CardDescription>
-                  Here's how well your resume matches the job requirements
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="text-center space-y-4">
-                  <div className="text-6xl font-bold bg-gradient-hero bg-clip-text text-transparent">
-                    {result.match_percentage}%
-                  </div>
-                  <div className="max-w-md mx-auto">
-                    <Progress 
-                      value={result.match_percentage} 
-                      className="h-3"
-                    />
-                  </div>
-                  <p className="text-lg text-muted-foreground">
-                    Overall Match Score
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Detailed Analysis */}
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Strengths */}
-              <Card className="shadow-medium">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-success">
-                    <CheckCircle className="h-5 w-5" />
-                    Strengths
-                  </CardTitle>
-                  <CardDescription>
-                    Areas where your resume aligns well
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="prose prose-sm max-w-none">
-                    <p className="whitespace-pre-wrap text-foreground">
-                      {result.strengths}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Weaknesses */}
-              <Card className="shadow-medium">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-warning">
-                    <AlertCircle className="h-5 w-5" />
-                    Areas for Improvement
-                  </CardTitle>
-                  <CardDescription>
-                    Gaps you might want to address
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="prose prose-sm max-w-none">
-                    <p className="whitespace-pre-wrap text-foreground">
-                      {result.weaknesses}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
+        <main className="bg-white p-8 rounded-lg shadow-md">
+          <form onSubmit={handleSubmit}>
+            <div className="space-y-6">
+              <div>
+                <label htmlFor="resume-upload" className="block text-sm font-medium text-gray-700 mb-1">
+                  Upload Your Resume
+                </label>
+                <input
+                  id="resume-upload"
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  onChange={handleFileChange}
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+              </div>
+              <div>
+                <label htmlFor="job-description" className="block text-sm font-medium text-gray-700 mb-1">
+                  Paste Job Description
+                </label>
+                <textarea
+                  id="job-description"
+                  rows={10}
+                  value={jobDescription}
+                  onChange={(e) => setJobDescription(e.target.value)}
+                  placeholder="Paste the full job description here..."
+                  className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
             </div>
-
-            {/* Action Buttons */}
-            <div className="flex justify-center gap-4">
-              <Button variant="gradient" onClick={resetAnalysis}>
-                Analyze Another Resume
-              </Button>
-              <Button variant="outline" onClick={() => window.print()}>
-                Save Results
-              </Button>
+            <div className="mt-6">
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {isLoading ? 'Analyzing...' : 'Analyze'}
+              </button>
             </div>
-          </div>
-        )}
+          </form>
+
+          {error && (
+            <div className="mt-6 p-4 bg-red-100 text-red-700 border border-red-300 rounded-md">
+              <p>{error}</p>
+            </div>
+          )}
+
+          {result && (
+            <div className="mt-8 border-t pt-6">
+              <h2 className="text-2xl font-semibold text-gray-800 mb-4">Analysis Result</h2>
+              <div className="space-y-4">
+                <div className="p-4 bg-blue-50 rounded-lg">
+                  <h3 className="font-bold text-blue-800">Match Score</h3>
+                  <p className="text-3xl font-bold text-blue-600">{result.match_score}%</p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg">
+                  <h3 className="font-bold text-green-800">Summary</h3>
+                  <p className="text-gray-700">{result.summary}</p>
+                </div>
+                <div className="p-4 bg-yellow-50 rounded-lg">
+                  <h3 className="font-bold text-yellow-800">Missing Keywords</h3>
+                  <ul className="list-disc list-inside text-gray-700">
+                    {result.missing_keywords.map((keyword, index) => (
+                      <li key={index}>{keyword}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+        </main>
       </div>
     </div>
   );
-};
+}
 
-export default JobAnalyzer;
